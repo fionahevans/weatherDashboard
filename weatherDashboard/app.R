@@ -1,6 +1,5 @@
 library(shiny)
 library(shinyjs)
-library(ppd)
 library(httr)
 library(jsonlite)
 library(shinydashboard)
@@ -8,57 +7,64 @@ library(shinycssloaders)
 library(highcharter)
 
 
+library(ppd)
+
+
+
 ui <- dashboardPage(
   skin = "blue",
-  dashboardHeader(title = "Daily Operations"),
+  dashboardHeader(title = "Weather dashboard"),
   dashboardSidebar(
     sidebarMenu(
-      #menuItem("Dashboard", tabName = "dashboard", icon = icon("dashboard")),
-      menuItem("Weather", tabName = "weather", icon = icon("tint")),
-      menuItem("Widgets", tabName = "widgets", icon = icon("th"))
+  #     #menuItem("Dashboard", tabName = "dashboard", icon = icon("dashboard")),
+      menuItem("Weather", tabName = "weather", icon = icon("chart-bar"))#,
+  #     menuItem("Widgets", tabName = "widgets", icon = icon("th"))
     )
   ),
   dashboardBody(
     useShinyjs(),
     tabItems(
-      # tabItem(tabName = "dashboard",
-      #         h2("Dashboard")
-      # ),
+      
       tabItem(tabName = "weather",
               tabsetPanel(
                 id = "weatherTabs",
                 tabPanel(
-                  title = "Weather snapshot",
+                  title = "Snapshot",
                   value = "weatherSnap",
-                  # Boxes need to be put in a row (or column)
                   fluidRow(
                     column(
                       width = 12,
-                      h3(textOutput("station_name") , align="center")
+                      h3(textOutput("station.name") , align="center")
                     )
+                  ),
+                  fluidRow(
+                    infoBoxOutput("summerRain"),
+                    infoBoxOutput("seasonRain"),
+                    infoBoxOutput("potentialYield")
+                    #infoBoxOutput("soilWater")
                   ),
                   fluidRow(
                     #div(id = "loading", height=400, p("Loading data...")),
                     column(
                       width = 8,
-                      highchartOutput("rtd_hc") #%>% withSpinner(color="#0dc5c1")
+                      highchartOutput("rtd_hc") # %>% withSpinner(color="#0dc5c1")
                     ),
                     column(
                       width = 4,
                       highchartOutput("py_hc") 
                     )
-                  ),
-                  fluidRow(
-                    column(
-                      width = 12,
-                      highchartOutput("sw_hc") #%>% withSpinner(color="#0dc5c1")
-                    )
-                    
-                  )
+                  )#,
+                  # fluidRow(
+                  #   column(
+                  #     width = 12,
+                  #     highchartOutput("sw_hc") # %>% withSpinner(color="#0dc5c1")
+                  #   )
+                  #   
+                  # ) 
                 ), # end tabPanel
                 
                 tabPanel(
-                  title = "Weather inputs",
+                  title = "Inputs & info",
                   value = "weatherParms",
                   fluidRow(
                     column(
@@ -72,7 +78,7 @@ ui <- dashboardPage(
                   fluidRow(
                     column(
                       width=4, 
-                      selectInput(
+                      selectizeInput(
                         "station", "Weather station", 
                         c("Merredin (BOM: 10092)"), selected="Merredin (BOM: 10092)"),
                       dateInput(
@@ -109,30 +115,30 @@ ui <- dashboardPage(
                       width=8,
                       includeHTML("py.html")
                     )
-                  ),
-                  fluidRow(
-                    column(
-                      width=12,
-                      h3("Soil water")
-                    )
-                  ),
-                  fluidRow(
-                    column(
-                        width=4,
-                        selectInput("soil", "Soil type", c("gravel", "shallow-soil", 
-                                                           "sand", "sandy-earth", 
-                                                           "shallow-sandy-duplex", 
-                                                           "deep-sand-duplex", 
-                                                           "shallow-loamy-duplex", 
-                                                           "deep-loamy-duplex", 
-                                                           "loamy-earth", "clay"),
-                                    selected="shallow-sandy-duplex")
-                      ),
-                    column(
-                        width=8,
-                        includeHTML("sw.html")
-                    )
-                  ) # end fluidRow
+                  )#,
+                  # fluidRow(
+                  #   column(
+                  #     width=12,
+                  #     h3("Soil water")
+                  #   )
+                  # ),
+                  # fluidRow(
+                  #   column(
+                  #       width=4,
+                  #       selectizeInput("soil", "Soil type", c("gravel", "shallow-soil", 
+                  #                                          "sand", "sandy-earth", 
+                  #                                          "shallow-sandy-duplex", 
+                  #                                          "deep-sand-duplex", 
+                  #                                          "shallow-loamy-duplex", 
+                  #                                          "deep-loamy-duplex", 
+                  #                                          "loamy-earth", "clay"),
+                  #                   selected="shallow-sandy-duplex")
+                  #     ),
+                  #   column(
+                  #       width=8,
+                  #       includeHTML("sw.html")
+                  #   )
+                  # ) # end fluidRow
                 )
               ) # end tabsetPanel
               
@@ -142,6 +148,8 @@ ui <- dashboardPage(
 )
 
 server <- function(input, output, session) { 
+  
+  addClass(selector = "body", class = "sidebar-collapse")
   
   science.apiKey <- 'iDUtU8TgAZIiCwKYkbXv9xr2Y4W8OxPC'
   science <- 'https://api.dpird.wa.gov.au/v2/science/rainfall/'
@@ -161,13 +169,14 @@ server <- function(input, output, session) {
   
   # Fill selectInput with stations
   observe({
-    updateSelectInput(session, "station", choices = stations$name, selected="Merredin (BOM: 10092)")
+    updateSelectizeInput(session, "station", choices = stations$name, 
+                         selected="Merredin (BOM: 10092)")
   })
   
   # Get RTD data when inputs are updated
   observeEvent(c(input$station, input$summerStart, input$soil), {
    
-    forecastDate <- format(today, "%Y-%m-%d")
+    forecastDate <- format(Sys.time(), "%Y-%m-%d")
     
     station.name <- stations[which(stations$name == input$station), "stationName"]
     station.id <- stations[which(stations$name == input$station), "stationCode"]
@@ -178,12 +187,16 @@ server <- function(input, output, session) {
     rtd$data <- ret$data
     rtd.summary$data <- as.data.frame(ret$summary)
     calculatePY()
+    
     cat("Rainfall to date data updated.\n")
+
   })
   
   # Get soil water data when inputs are updated
-  observeEvent(c(input$station, input$summerStart, input$soil), {
-    forecastDate <- format(today, "%Y-%m-%d")
+  #observeEvent(c(input$station, input$summerStart, input$soil), {
+    observeEvent(c(input$soil), {
+    
+    forecastDate <- format(Sys.time(), "%Y-%m-%d")
     
     station.name <- stations[which(stations$name == input$station), "stationName"]
     station.id <- stations[which(stations$name == input$station), "stationCode"]
@@ -203,13 +216,9 @@ server <- function(input, output, session) {
     tmp <- data.frame(date=days, rainfall=vec, fallow=vec, crop=vec)
     data <- rbind(data, tmp)
     
-    #print(days)
-    
     sw$data <- data
     breakOfSeason$data <- ret$breakOfSeason
     
-    print(dim(rtd))
-    print(dim(data))
     cat("Soil water data updated.\n")
   })
   
@@ -227,7 +236,7 @@ server <- function(input, output, session) {
                 rtd$data$proj9[nrow(rtd$data)])
                           
     py$data <- data.frame(
-                   name=c("Decile 1", "Decile 5", "Decile 9"),
+                   name=c("Decile 1 finish", "Decile 5 finish", "Decile 9 finish"),
                    py=c(round((Wavail$decile1-input$evap) * input$wue / 1000, 1), 
                         round((Wavail$decile5-input$evap) * input$wue / 1000, 1), 
                         round((Wavail$decile9-input$evap) * input$wue / 1000, 1)))
@@ -239,6 +248,42 @@ server <- function(input, output, session) {
    calculatePY()
  })
   
+ output$summerRain <- renderInfoBox({
+   infoBox("Summer rainfall",
+         paste0(rtd.summary$data$summer.cumulativeRainfall, " mm\n", 
+                "(Decile ", rtd.summary$data$summer.decile, ")"),
+         icon = icon("certificate"), #sun
+         color = "yellow")
+ })
+ 
+ output$seasonRain <- renderInfoBox({
+   infoBox("Growing season rainfall",
+         paste0(rtd.summary$data$season.cumulativeRainfall, " mm\n",
+                "(Decile ", rtd.summary$data$season.decile, ")"),
+         icon = icon("umbrella"),
+         color = "purple")
+ })
+ 
+ 
+ output$potentialYield <- renderInfoBox({
+   infoBox("Potential yield",
+           paste0(py$data$py[2], " t/ha\n",
+                  "(Decile 5)"),
+           icon = icon("leaf"),
+           color = "teal")
+ })
+ 
+ output$soilWater <- renderInfoBox({
+   
+   if (length(!is.na(sw$data$crop)) > 0) txt <- paste0(max(sw$data$crop, na.rm=T), " mm",
+                                                       " (Crop)")
+   if (length(!is.na(sw$data$crop)) == 0) txt <- paste0(max(sw$data$fallow, na.rm=T), " mm",
+                                                       " (Fallow)")
+   infoBox("Soil Water",
+         txt,
+         icon = icon("tint"),
+         color = "blue")
+ })
  
     
   # Render rainfall to date chart
@@ -246,48 +291,46 @@ server <- function(input, output, session) {
     
     data <- rtd$data
       
-      highchart() %>%
-        #hc_title(text = paste("Rainfall to date:", station.name)) %>%
-        hc_tooltip(
-          shared = TRUE) %>%
-        
-        hc_add_series(
-          round(data$decile1, 1),
-          color = "#c3b091",
-          name = paste("Decile 1")) %>%
-        hc_add_series(
-          round(data$decile5, 1), 
-          color = "#c3b091",
-          name = paste("Decile 5")) %>%
-        hc_add_series(
-          round(data$decile9,  1),
-          color = "#c3b091",
-          name = paste("Decile 9")) %>%
-        hc_add_series(
-          round(max(data$cumulativeRainfall, na.rm=T)+data$proj1, 1),
-          color = "#0dc5c1",
-          name = paste("Projected decile 1")) %>%
-        hc_add_series(
-          round(max(data$cumulativeRainfall, na.rm=T)+data$proj5, 1),
-          color = "#0dc5c1",
-          name = paste("Projected decile 5")) %>%
-        hc_add_series(
-          round(max(data$cumulativeRainfall, na.rm=T)+data$proj9, 1),
-          color = "#0dc5c1",
-          name = paste("Projected decile 9")) %>%
-        hc_add_series(
-          data$cumulativeRainfall, 
-          color = "purple",
-          name = paste("Cumulative rainfall")) %>%
-        # hc_xAxis(
-        #   type = "datetime",
-        #   categories = data$date,
-        #   dateTimeLabelFormats = list(day = "%d %b"),
-        #   tickInterval  = 14 * 24 * 3600 * 1000
-        # ) %>%
-        hc_yAxis(
-          title = list(text = "Cumulative rainfall (mm)")
-        )
+    highchart() %>%
+      #hc_title(text = "Rainfall to date") %>%
+      hc_tooltip(
+        shared = TRUE) %>%
+      hc_add_series_times_values(
+        dates = data$date, values = round(data$decile1, 1),
+        color = "#c3b091",
+        name = paste("Decile 1")) %>%
+      hc_add_series_times_values(
+        dates = data$date, values = round(data$decile5, 1), 
+        color = "#c3b091",
+        name = paste("Decile 5")) %>%
+      hc_add_series_times_values(
+        dates = data$date, values = round(data$decile9,  1),
+        color = "#c3b091",
+        name = paste("Decile 9")) %>%
+      hc_add_series_times_values(
+        dates = data$date, values = round(max(data$cumulativeRainfall, na.rm=T)+data$proj1, 1),
+        color = "#0dc5c1",
+        name = paste("Projected decile 1")) %>%
+      hc_add_series_times_values(
+        dates = data$date, values = round(max(data$cumulativeRainfall, na.rm=T)+data$proj5, 1),
+        color = "#0dc5c1",
+        name = paste("Projected decile 5")) %>%
+      hc_add_series_times_values(
+        dates = data$date, values = round(max(data$cumulativeRainfall, na.rm=T)+data$proj9, 1),
+        color = "#0dc5c1",
+        name = paste("Projected decile 9")) %>%
+      hc_add_series_times_values(
+        dates = data$date, values = data$cumulativeRainfall, 
+        color = "purple",
+        name = paste("Cumulative rainfall")) %>%
+      hc_xAxis(
+        type = "datetime",
+        dateTimeLabelFormats = list(day = "%d %b"),
+        tickInterval  = 14 * 24 * 3600 * 1000
+      ) %>%
+      hc_yAxis(
+        title = list(text = "Cumulative rainfall (mm)")
+      )
   })
 
   
@@ -298,7 +341,7 @@ server <- function(input, output, session) {
     data <- py$data
       
       highchart() %>%
-        #hc_title(text = paste("Potential Yield:")) %>%
+        #hc_title(text = "Potential Yield") %>%
         hc_tooltip(
           shared = TRUE) %>%
         hc_add_series(
@@ -320,34 +363,34 @@ server <- function(input, output, session) {
   output$sw_hc <- renderHighchart({
     
     data <- sw$data
+    brk <- paste("Break: ", format(breakOfSeason$data, "%Y-%m-%d"))
     
     highchart() %>%
-      #hc_title(text = paste("Rainfall to date:", station.name)) %>%
+      #hc_title(text = "Soil water:") %>%
       hc_tooltip(
         shared = TRUE) %>%
-      hc_add_series(
-        data$fallow, 
+      hc_add_series_times_values(
+        dates = data$date, values = data$fallow, 
         type = "spline",
         color = "#706a48",
         name = paste("Soil water (fallow)")) %>%
-      hc_add_series(
-        data$crop, 
+      hc_add_series_times_values(
+        dates = data$date, values = data$crop, 
         type = "spline",
         color = "#a6c143",
         name = paste("Soil water (crop)")) %>%
-      hc_add_series(
-        data$rainfall, 
+      hc_add_series_times_values(
+        dates = data$date, values = data$rainfall, 
         type = "column",
         color = "#265e96",
         name = paste("Rainfall")) %>%
-      # hc_xAxis(
-      #   type = "datetime",
-      #   categories = data$date,
-      #   dateTimeLabelFormats = list(day = "%d %b"),
-      #   tickInterval  = 14 * 24 * 3600 * 1000,
-      #   plotLines = list(color = "gray", dashstyle = "shortdash", width = 2,
-      #                    label = list(text = "Break of season"))
-      # ) %>%
+      hc_xAxis(
+        type = "datetime",
+        dateTimeLabelFormats = list(day = "%d %b"),
+        # plotLines = list(color = "gray", dashstyle = "shortdash", width = 2,
+        #                  value = breakOfSeason$data,
+        #                  label = list(text = brk)),
+        tickInterval  = 14 * 24 * 3600 * 1000 ) %>%
       hc_yAxis(
         title = list(text = "Soil water (mm)")
       )

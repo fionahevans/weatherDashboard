@@ -1,0 +1,10 @@
+name: weatherdashboard
+title:
+username:
+account: bigagdata
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 413032
+bundleId: 1561352
+url: https://bigagdata.shinyapps.io/weatherdashboard/
+when: 1535611637.98307
